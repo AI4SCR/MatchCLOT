@@ -12,7 +12,7 @@ from sklearn.model_selection import LeaveOneGroupOut
 
 sys.path.append("../resources")
 from resources.data import ModalityMatchingDataset
-from resources.models import Modality_CLIP, Encoder
+from resources.models import Modality_CLIP, Encoder, defaults_GEX2ADT, defaults_GEX2ATAC
 from resources.catalyst_tools import scRNARunner, CustomMetric
 from resources.preprocessing import lsiTransformer
 
@@ -23,56 +23,17 @@ parser = argparse.ArgumentParser()
 subparsers = parser.add_subparsers(dest='TASK')
 
 # Common args
-defaults = dict(
-    USE_AUGOT=False,
-)
+defaults = dict()
 for key, value in defaults.items():
     parser.add_argument("--" + key, default=value, type=type(value))
 
 # GEX2ADT args
 parser_GEX2ADT = subparsers.add_parser('GEX2ADT', help='train GEX2ADT model')
-defaults_GEX2ADT = dict(
-    LR=0.0006,
-    WEIGHT_DECAY=0.000125,
-    EMBEDDING_DIM=128,
-    DROPOUT_RATES_ADT=0.67,
-    DROPOUT_RATES_GEX0=0.34,
-    DROPOUT_RATES_GEX1=0.47,
-    LAYERS_DIM_ADT=2048,
-    LAYERS_DIM_GEX0=2048,
-    LAYERS_DIM_GEX1=1024,
-    LOG_T=2.74,
-    N_LSI_COMPONENTS_ADT=256,
-    N_LSI_COMPONENTS_GEX=192,
-    N_EPOCHS=1000,
-    BATCH_SIZE=16384,
-    SFA_NOISE=0.0,
-    VALID_FOLD="0",  # validation on the first batch (s1d1), train on other batches
-)
 for key, value in defaults_GEX2ADT.items():
     parser_GEX2ADT.add_argument("--" + key, default=value, type=type(value))
 
 # GEX2ATAC args
 parser_GEX2ATAC = subparsers.add_parser('GEX2ATAC', help='train GEX2ATAC model')
-defaults_GEX2ATAC = dict(
-    LR=0.000175,
-    WEIGHT_DECAY=0.0002,
-    EMBEDDING_DIM=256,
-    DROPOUT_RATES_ATAC0=0.4,
-    DROPOUT_RATES_ATAC1=0.2,
-    DROPOUT_RATES_GEX0=0.3,
-    DROPOUT_RATES_GEX1=0.05,
-    LAYERS_DIM_ATAC0=4096,
-    LAYERS_DIM_ATAC1=2048,
-    LAYERS_DIM_GEX0=256,
-    LAYERS_DIM_GEX1=2048,
-    LOG_T=4.0,
-    N_LSI_COMPONENTS_GEX=192,
-    N_EPOCHS=1000,
-    BATCH_SIZE=16384,
-    SFA_NOISE=0.0,
-    VALID_FOLD="0",  # validation on the first batch (s1d1), train on other batches
-)
 for key, value in defaults_GEX2ATAC.items():
     parser_GEX2ATAC.add_argument("--" + key, default=value, type=type(value))
 
@@ -255,8 +216,6 @@ if is_multiome:
         dim_mod2=args.N_LSI_COMPONENTS_GEX,
         output_dim=args.EMBEDDING_DIM,
         T=args.LOG_T,
-        swap_rate_1=0.0,
-        swap_rate_2=0.0,
         noise_amount=args.SFA_NOISE,
     )
 else:
@@ -274,8 +233,6 @@ else:
         dim_mod2=args.N_LSI_COMPONENTS_GEX,
         output_dim=args.EMBEDDING_DIM,
         T=args.LOG_T,
-        swap_rate_1=0.0,
-        swap_rate_2=0.0,
         noise_amount=args.SFA_NOISE,
     )
 
