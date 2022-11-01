@@ -2,45 +2,6 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-defaults_GEX2ADT = dict(
-    LR=0.0006,
-    WEIGHT_DECAY=0.000125,
-    EMBEDDING_DIM=128,
-    DROPOUT_RATES_ADT=0.67,
-    DROPOUT_RATES_GEX0=0.34,
-    DROPOUT_RATES_GEX1=0.47,
-    LAYERS_DIM_ADT=2048,
-    LAYERS_DIM_GEX0=2048,
-    LAYERS_DIM_GEX1=1024,
-    LOG_T=2.74,
-    N_LSI_COMPONENTS_ADT=256,
-    N_LSI_COMPONENTS_GEX=192,
-    N_EPOCHS=1000,
-    BATCH_SIZE=16384,
-    SFA_NOISE=0.0,
-    VALID_FOLD="0",  # validation on the first batch (s1d1), train on other batches
-)
-
-defaults_GEX2ATAC = dict(
-    LR=0.000175,
-    WEIGHT_DECAY=0.0002,
-    EMBEDDING_DIM=256,
-    DROPOUT_RATES_ATAC0=0.4,
-    DROPOUT_RATES_ATAC1=0.2,
-    DROPOUT_RATES_GEX0=0.3,
-    DROPOUT_RATES_GEX1=0.05,
-    LAYERS_DIM_ATAC0=4096,
-    LAYERS_DIM_ATAC1=2048,
-    LAYERS_DIM_GEX0=256,
-    LAYERS_DIM_GEX1=2048,
-    LOG_T=4.0,
-    N_LSI_COMPONENTS_GEX=192,
-    N_EPOCHS=1000,
-    BATCH_SIZE=16384,
-    SFA_NOISE=0.0,
-    VALID_FOLD="0",  # validation on the first batch (s1d1), train on other batches
-)
-
 
 class BatchSwapNoise(nn.Module):
     """Swap Noise module"""

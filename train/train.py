@@ -7,14 +7,14 @@ import anndata as ad
 import pandas as pd
 import torch
 from catalyst import dl
-from harmony import harmonize
 from sklearn.model_selection import LeaveOneGroupOut
 
 sys.path.append("../resources")
 from resources.data import ModalityMatchingDataset
-from resources.models import Modality_CLIP, Encoder, defaults_GEX2ADT, defaults_GEX2ATAC
+from resources.models import Modality_CLIP, Encoder
 from resources.catalyst_tools import scRNARunner, CustomMetric
-from resources.preprocessing import lsiTransformer
+from resources.preprocessing import lsiTransformer, harmony
+from resources.hyperparameters import *
 
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
@@ -23,8 +23,7 @@ parser = argparse.ArgumentParser()
 subparsers = parser.add_subparsers(dest='TASK')
 
 # Common args
-defaults = dict()
-for key, value in defaults.items():
+for key, value in defaults_common.items():
     parser.add_argument("--" + key, default=value, type=type(value))
 
 # GEX2ADT args
@@ -40,16 +39,19 @@ for key, value in defaults_GEX2ATAC.items():
 # Parse args
 args, unknown_args = parser.parse_known_args()
 
+# Date in format YYMMDDHHMMSS
+date = ''.join([c if c.isnumeric() else '' for c in str(pd.Timestamp('today').to_pydatetime())][2:19])
+
 # Define file paths
 if args.TASK == 'GEX2ADT':
-    train_path = "../datasets/phase2-data/match_modality/openproblems_bmmc_cite_phase2_rna/openproblems_bmmc_cite_phase2_rna.censor_dataset.output_"
-    test_path = "../datasets/phase2-private-data/match_modality/openproblems_bmmc_cite_phase2_rna/openproblems_bmmc_cite_phase2_rna.censor_dataset.output_"
-    pretrain_path = "../pretrainGEX2ADT"
+    train_path = args.DATASETS_PATH + "/phase2-data/match_modality/openproblems_bmmc_cite_phase2_rna/openproblems_bmmc_cite_phase2_rna.censor_dataset.output_"
+    test_path = args.DATASETS_PATH + "/phase2-private-data/match_modality/openproblems_bmmc_cite_phase2_rna/openproblems_bmmc_cite_phase2_rna.censor_dataset.output_"
+    pretrain_path = "../pretrain/GEX2ADT/" + date + "/"  # Path for saving the trained model
     is_multiome = False
 elif args.TASK == 'GEX2ATAC':
-    train_path = "../datasets/phase2-data/match_modality/openproblems_bmmc_multiome_phase2_rna/openproblems_bmmc_multiome_phase2_rna.censor_dataset.output_"
-    test_path = "../datasets/phase2-private-data/match_modality/openproblems_bmmc_multiome_phase2_rna/openproblems_bmmc_multiome_phase2_rna.censor_dataset.output_"
-    pretrain_path = "../pretrainGEX2ATAC"
+    train_path = args.DATASETS_PATH + "/phase2-data/match_modality/openproblems_bmmc_multiome_phase2_rna/openproblems_bmmc_multiome_phase2_rna.censor_dataset.output_"
+    test_path = args.DATASETS_PATH + "/phase2-private-data/match_modality/openproblems_bmmc_multiome_phase2_rna/openproblems_bmmc_multiome_phase2_rna.censor_dataset.output_"
+    pretrain_path = "../pretrain/GEX2ATAC/" + date + "/"
     is_multiome = True
 else:
     raise ValueError('Unknown task: ' + args.TASK)
@@ -64,6 +66,15 @@ par = {
     "input_pretrain": pretrain_path,
 }
 os.makedirs(par["output_pretrain"], exist_ok=True)
+
+# Overwrite configurations for ablation study
+if args.HYPERPARAMS == False:
+    if is_multiome:
+        for hyperparam, baseline_value in baseline_GEX2ATAC.items():
+            args.hyperparam = baseline_value
+    else:
+        for hyperparam, baseline_value in baseline_GEX2ADT.items():
+            args.hyperparam = baseline_value
 
 # Load train data
 print("loading train data")
@@ -88,7 +99,7 @@ input_test_mod2 = ad.read_h5ad(par["input_test_mod2"])
 print("input_test_mod2.shape", input_test_mod2.shape)
 
 # Define train and validation split
-fold_number = int(args.VALID_FOLD)
+fold_number = args.VALID_FOLD
 print("fold_number:", fold_number)
 trial_dump_folder = os.path.join(par["output_pretrain"], str(fold_number))
 logo = LeaveOneGroupOut()
@@ -100,7 +111,8 @@ train_indexes, test_indexes = all_splits[fold_number]
 
 # Load or fit LSI preprocessing
 path = par["output_pretrain"]
-if os.path.exists(path + "/lsi_GEX_transformer.pickle"):
+
+if os.path.exists(path + "/lsi_GEX_transformer.pickle") and args.TRANSDUCTIVE:
     # Avoid re-computing LSI transformation when using cross-validation and transductive LSI
     print("loading lsi transformer from", path)
     with open(path + "/lsi_GEX_transformer.pickle", "rb") as f:
@@ -116,10 +128,14 @@ else:
     lsi_transformer_gex = lsiTransformer(
         n_components=args.N_LSI_COMPONENTS_GEX, drop_first=True
     )
-    print("concatenating gex train and test")
-    concatenated_gex = ad.concat([input_train_mod1, input_test_mod1], join="outer")
-    print("done, concatenated_gex.shape", concatenated_gex.shape)
-    lsi_transformer_gex.fit(concatenated_gex)
+    if args.TRANSDUCTIVE:
+        print("concatenating gex train and test")
+        concatenated_gex = ad.concat([input_train_mod1, input_test_mod1], join="outer")
+        print("done, concatenated_gex.shape", concatenated_gex.shape)
+        lsi_transformer_gex.fit(concatenated_gex)
+    else:
+        lsi_transformer_gex.fit(input_train_mod1)
+
     # Save LSI transformation
     with open(path + "/lsi_GEX_transformer.pickle", "wb") as f:
         pickle.dump(lsi_transformer_gex, f)
@@ -131,10 +147,14 @@ else:
         lsi_transformer_atac = lsiTransformer(
             n_components=args.N_LSI_COMPONENTS_ATAC, drop_first=True
         )
-        print("concatenating atac train and test")
-        concatenated_atac = ad.concat([input_train_mod2, input_test_mod2], join="outer")
-        print("done, concatenated_atac.shape", concatenated_atac.shape)
-        lsi_transformer_atac.fit(concatenated_atac)
+        if args.TRANSDUCTIVE:
+            print("concatenating atac train and test")
+            concatenated_atac = ad.concat([input_train_mod2, input_test_mod2], join="outer")
+            print("done, concatenated_atac.shape", concatenated_atac.shape)
+            lsi_transformer_atac.fit(concatenated_atac)
+        else:
+            lsi_transformer_atac.fit(input_train_mod2)
+
         # Save LSI transformation
         with open(path + "/lsi_ATAC_transformer.pickle", "wb") as f:
             pickle.dump(lsi_transformer_atac, f)
@@ -145,58 +165,41 @@ gex_train = lsi_transformer_gex.transform(input_train_mod1[train_indexes])
 gex_test = lsi_transformer_gex.transform(input_train_mod1[test_indexes])
 gex_private = lsi_transformer_gex.transform(input_test_mod1)
 if is_multiome:
-    atac_train = lsi_transformer_atac.transform(input_train_mod2[train_indexes])
-    atac_test = lsi_transformer_atac.transform(input_train_mod2[test_indexes])
-    atac_private = lsi_transformer_atac.transform(input_test_mod2)
+    mod2_train = lsi_transformer_atac.transform(input_train_mod2[train_indexes])
+    mod2_test = lsi_transformer_atac.transform(input_train_mod2[test_indexes])
+    mod2_private = lsi_transformer_atac.transform(input_test_mod2)
 else:
-    adt_train = input_train_mod2[train_indexes].to_df()
-    adt_test = input_train_mod2[test_indexes].to_df()
-    adt_private = input_test_mod2.to_df()
+    mod2_train = input_train_mod2[train_indexes].to_df()
+    mod2_test = input_train_mod2[test_indexes].to_df()
+    mod2_private = input_test_mod2.to_df()
 
-# Apply Harmony batch effect correction, transductive setting
-gex_train['batch'] = input_train_mod1.obs.batch[train_indexes]
-gex_test['batch'] = input_train_mod1.obs.batch[test_indexes]
-gex_private['batch'] = input_test_mod1.obs.batch
-if is_multiome:
-    atac_train['batch'] = input_train_mod2.obs.batch[train_indexes]
-    atac_test['batch'] = input_train_mod2.obs.batch[test_indexes]
-    atac_private['batch'] = input_test_mod2.obs.batch
-else:
-    adt_train['batch'] = input_train_mod2.obs.batch[train_indexes]
-    adt_test['batch'] = input_train_mod2.obs.batch[test_indexes]
-    adt_private['batch'] = input_test_mod2.obs.batch
+# Apply Harmony batch effect correction
+if args.HARMONY:
+    gex_train['batch'] = input_train_mod1.obs.batch[train_indexes]
+    gex_test['batch'] = input_train_mod1.obs.batch[test_indexes]
+    gex_private['batch'] = input_test_mod1.obs.batch
+    mod2_train['batch'] = input_train_mod2.obs.batch[train_indexes]
+    mod2_test['batch'] = input_train_mod2.obs.batch[test_indexes]
+    mod2_private['batch'] = input_test_mod2.obs.batch
 
-def harmony_transductive(train, test, private, use_gpu=True):
-    all = pd.concat([train, test, private])
-    all_batches = all.pop('batch')
-    all_batches.columns = ['batch']
-    all_batches = all_batches.to_frame()
-    all_harmony = harmonize(all.to_numpy(), all_batches, batch_key='batch', use_gpu=use_gpu, verbose=True)
-    train_harmony = all_harmony[:len(train)]
-    test_harmony = all_harmony[len(train):len(train) + len(test)]
-    private_harmony = all_harmony[len(train) + len(test):]
-    return train_harmony, test_harmony, private_harmony
-
-gex_train_h, gex_test_h, gex_private_h = harmony_transductive(gex_train, gex_test, gex_private)
-if is_multiome:
-    # mod2 is ATAC
-    mod2_train_h, mod2_test_h, mod2_private_h = harmony_transductive(atac_train, atac_test, atac_private)
-else:
-    # mod2 is ADT
-    mod2_train_h, mod2_test_h, mod2_private_h = harmony_transductive(adt_train, adt_test, adt_private)
+    if args.TRANSDUCTIVE:
+        # Transductive setting
+        gex_train, gex_test, gex_private = harmony([gex_train, gex_test, gex_private])
+        mod2_train, mod2_test, mod2_private = harmony([mod2_train, mod2_test, mod2_private])
+    else:
+        gex_train, = harmony([gex_train])
+        gex_test, = harmony([gex_test])
+        mod2_train, = harmony([mod2_train])
+        mod2_test, = harmony([mod2_test])
 
 # Load torch dataloaders
-dataset_train = ModalityMatchingDataset(pd.DataFrame(mod2_train_h), pd.DataFrame(gex_train_h))
-dataset_test = ModalityMatchingDataset(pd.DataFrame(mod2_test_h), pd.DataFrame(gex_test_h))
-dataset_private = ModalityMatchingDataset(pd.DataFrame(mod2_private_h), pd.DataFrame(gex_private_h))
+dataset_train = ModalityMatchingDataset(pd.DataFrame(mod2_train), pd.DataFrame(gex_train))
+dataset_test = ModalityMatchingDataset(pd.DataFrame(mod2_test), pd.DataFrame(gex_test))
 dataloader_train = torch.utils.data.DataLoader(
     dataset_train, args.BATCH_SIZE, shuffle=True, num_workers=4
 )
 dataloader_test = torch.utils.data.DataLoader(
     dataset_test, args.BATCH_SIZE, shuffle=False, num_workers=4
-)
-dataloader_private = torch.utils.data.DataLoader(
-    dataset_private, args.BATCH_SIZE, shuffle=False, num_workers=4
 )
 print("loaded dataloaders")
 
@@ -205,11 +208,11 @@ if is_multiome:
     model = Modality_CLIP(
         Encoder=Encoder,
         layers_dims=(
-            [args.LAYERS_DIM_ATAC0, args.LAYERS_DIM_ATAC1],
+            [args.LAYERS_DIM_ATAC],
             [args.LAYERS_DIM_GEX0, args.LAYERS_DIM_GEX1],
         ),
         dropout_rates=(
-            [args.DROPOUT_RATES_ATAC0, args.DROPOUT_RATES_ATAC1],
+            [args.DROPOUT_RATES_ATAC],
             [args.DROPOUT_RATES_GEX0, args.DROPOUT_RATES_GEX1],
         ),
         dim_mod1=args.N_LSI_COMPONENTS_ATAC,
@@ -222,11 +225,11 @@ else:
     model = Modality_CLIP(
         Encoder=Encoder,
         layers_dims=(
-            [args.LAYERS_DIM_ADT],
+            [args.LAYERS_DIM_ADT0, args.LAYERS_DIM_ADT1],
             [args.LAYERS_DIM_GEX0, args.LAYERS_DIM_GEX1],
         ),
         dropout_rates=(
-            [args.DROPOUT_RATES_ADT],
+            [args.DROPOUT_RATES_ADT0, args.DROPOUT_RATES_ADT1],
             [args.DROPOUT_RATES_GEX0, args.DROPOUT_RATES_GEX1],
         ),
         dim_mod1=args.N_LSI_COMPONENTS_ADT,

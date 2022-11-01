@@ -8,7 +8,8 @@ import numpy as np
 import pandas as pd
 import scipy.sparse
 import torch
-from harmony import harmonize
+
+from resources.preprocessing import harmony
 
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 # setting device on GPU if available, else CPU
@@ -17,30 +18,43 @@ print('Using device:', device)
 
 sys.path.append("../resources")
 from resources.data import ModalityMatchingDataset
-from resources.models import Modality_CLIP, Encoder, defaults_GEX2ADT, defaults_GEX2ATAC
+from resources.models import Modality_CLIP, Encoder
 from resources.OTmatching import get_OT_bipartite_matching_adjacency_matrix
+from resources.hyperparameters import defaults_common, defaults_GEX2ADT, defaults_GEX2ATAC, baseline_GEX2ADT, \
+    baseline_GEX2ATAC
 
-# Parse args
+# Define argument parsers
 parser = argparse.ArgumentParser()
 subparsers = parser.add_subparsers(dest='TASK')
+
+# Common args
+for key, value in defaults_common.items():
+    parser.add_argument("--" + key, default=value, type=type(value))
+
 parser.add_argument('--epsilon', '-H', type=float, default=0.01,
                     description='entropy regularization strength for the OT matching')
+
+# GEX2ADT args
 parser_GEX2ADT = subparsers.add_parser('GEX2ADT', help='train GEX2ADT model')
 for key, value in defaults_GEX2ADT.items():
     parser_GEX2ADT.add_argument("--" + key, default=value, type=type(value))
+
+# GEX2ATAC args
 parser_GEX2ATAC = subparsers.add_parser('GEX2ATAC', help='train GEX2ATAC model')
 for key, value in defaults_GEX2ATAC.items():
     parser_GEX2ATAC.add_argument("--" + key, default=value, type=type(value))
+
+# Parse args
 args, unknown_args = parser.parse_known_args()
 
 # Define file paths
 if args.TASK == 'GEX2ADT':
     dataset_path = "../datasets/phase2-private-data/match_modality/openproblems_bmmc_cite_phase2_rna/openproblems_bmmc_cite_phase2_rna.censor_dataset.output_"
-    pretrain_path = "../pretrainGEX2ADT"
+    pretrain_path = args.PRETRAIN_PATH
     is_multiome = False
 elif args.TASK == 'GEX2ATAC':
     dataset_path = "../datasets/phase2-private-data/match_modality/openproblems_bmmc_multiome_phase2_rna/openproblems_bmmc_multiome_phase2_rna.censor_dataset.output_"
-    pretrain_path = "../pretrainGEX2ATAC"
+    pretrain_path = args.PRETRAIN_PATH
     is_multiome = True
 else:
     raise ValueError('Unknown task: ' + args.TASK)
@@ -51,8 +65,17 @@ par = {
     "input_test_mod1": f"{dataset_path}test_mod1.h5ad",
     "input_test_mod2": f"{dataset_path}test_mod2.h5ad",
     "input_pretrain": pretrain_path,
-    "output": args.TASK + "H" + str(args.epsilon) + ".h5ad",
+    "output": args.TASK + ".h5ad",
 }
+
+# Overwrite configurations for ablation study
+if args.HYPERPARAMS == False:
+    if is_multiome:
+        for hyperparam, baseline_value in baseline_GEX2ATAC.items():
+            args.hyperparam = baseline_value
+    else:
+        for hyperparam, baseline_value in baseline_GEX2ADT.items():
+            args.hyperparam = baseline_value
 
 # Load data
 input_train_mod1 = ad.read_h5ad(par["input_train_mod1"])
@@ -63,7 +86,7 @@ input_test_mod2 = ad.read_h5ad(par["input_test_mod2"])
 N_cells = input_test_mod1.shape[0]
 assert input_test_mod2.shape[0] == N_cells
 
-# Load and apply LSI transformation, transductive setting
+# Load and apply LSI transformation
 with open(par["input_pretrain"] + "/lsi_GEX_transformer.pickle", "rb") as f:
     lsi_transformer_gex = pickle.load(f)
 if is_multiome:
@@ -71,41 +94,30 @@ if is_multiome:
         lsi_transformer_atac = pickle.load(f)
     gex_train = lsi_transformer_gex.transform(input_train_mod1)
     gex_test = lsi_transformer_gex.transform(input_test_mod1)
-    atac_train = lsi_transformer_atac.transform(input_train_mod2)
-    atac_test = lsi_transformer_atac.transform(input_test_mod2)
+    mod2_train = lsi_transformer_atac.transform(input_train_mod2)
+    mod2_test = lsi_transformer_atac.transform(input_test_mod2)
 else:
     gex_train = lsi_transformer_gex.transform(input_train_mod1)
     gex_test = lsi_transformer_gex.transform(input_test_mod1)
-    adt_train = input_train_mod2.to_df()
-    adt_test = input_test_mod2.to_df()
+    mod2_train = input_train_mod2.to_df()
+    mod2_test = input_test_mod2.to_df()
 
-# Apply Harmony transformation, transductive setting
-gex_train['batch'] = input_train_mod1.obs.batch
-gex_test['batch'] = input_test_mod1.obs.batch
-if is_multiome:
-    atac_train['batch'] = input_train_mod2.obs.batch
-    atac_test['batch'] = input_test_mod2.obs.batch
-else:
-    adt_train['batch'] = input_train_mod2.obs.batch
-    adt_test['batch'] = input_test_mod2.obs.batch
+if args.HARMONY:
+    # Apply Harmony batch effect correction
+    gex_train['batch'] = input_train_mod1.obs.batch
+    gex_test['batch'] = input_test_mod1.obs.batch
+    mod2_train['batch'] = input_train_mod2.obs.batch
+    mod2_test['batch'] = input_test_mod2.obs.batch
 
-def harmony_transductive(train, test, use_gpu=True):
-    all = pd.concat([train, test])
-    all_batches = all.pop('batch')
-    all_batches.columns = ['batch']
-    all_batches = all_batches.to_frame()
-    all_harmony = harmonize(all.to_numpy(), all_batches, batch_key='batch', use_gpu=use_gpu, verbose=True)
-    train_harmony = all_harmony[:len(train)]
-    test_harmony = all_harmony[len(train):]
-    return train_harmony, test_harmony
-
-gex_train_h, gex_test_h = harmony_transductive(gex_train, gex_test)
-if is_multiome:
-    # mod2 is ATAC
-    mod2_train_h, mod2_test_h = harmony_transductive(atac_train, atac_test)
-else:
-    # mod2 is ADT
-    mod2_train_h, mod2_test_h = harmony_transductive(adt_train, adt_test)
+    if args.TRANSDUCTIVE:
+        # Transductive setting
+        gex_train, gex_test, = harmony([gex_train, gex_test])
+        mod2_train, mod2_test, = harmony([mod2_train, mod2_test])
+    else:
+        gex_train, = harmony([gex_train])
+        gex_test, = harmony([gex_test])
+        mod2_train, = harmony([mod2_train])
+        mod2_test, = harmony([mod2_test])
 
 # Load pretrained models and ensemble predictions
 sim_matrix = np.zeros((N_cells, N_cells))
@@ -120,11 +132,11 @@ for fold in range(0, 9):
             model = Modality_CLIP(
                 Encoder=Encoder,
                 layers_dims=(
-                    [args.LAYERS_DIM_ATAC0, args.LAYERS_DIM_ATAC1],
+                    [args.LAYERS_DIM_ATAC],
                     [args.LAYERS_DIM_GEX0, args.LAYERS_DIM_GEX1],
                 ),
                 dropout_rates=(
-                    [args.DROPOUT_RATES_ATAC0, args.DROPOUT_RATES_ATAC1],
+                    [args.DROPOUT_RATES_ATAC],
                     [args.DROPOUT_RATES_GEX0, args.DROPOUT_RATES_GEX1],
                 ),
                 dim_mod1=args.N_LSI_COMPONENTS_ATAC,
@@ -137,11 +149,11 @@ for fold in range(0, 9):
             model = Modality_CLIP(
                 Encoder=Encoder,
                 layers_dims=(
-                    [args.LAYERS_DIM_ADT],
+                    [args.LAYERS_DIM_ADT0, args.LAYERS_DIM_ADT1],
                     [args.LAYERS_DIM_GEX0, args.LAYERS_DIM_GEX1],
                 ),
                 dropout_rates=(
-                    [args.DROPOUT_RATES_ADT],
+                    [args.DROPOUT_RATES_ADT0, args.DROPOUT_RATES_ADT1],
                     [args.DROPOUT_RATES_GEX0, args.DROPOUT_RATES_GEX1],
                 ),
                 dim_mod1=args.N_LSI_COMPONENTS_ADT,
@@ -155,7 +167,7 @@ for fold in range(0, 9):
         model.load_state_dict(weight)
 
         # Load torch datasets
-        dataset_test = ModalityMatchingDataset(gex_test_h, mod2_test_h)
+        dataset_test = ModalityMatchingDataset(gex_test, mod2_test)
         data_test = torch.utils.data.DataLoader(dataset_test, 32, shuffle=False)
 
         # Predict on test set
@@ -211,10 +223,10 @@ matching_matrix = matching_matrix[mod1_obs_names.get_indexer(mod1_obs_index), :]
 
 # Save the matching matrix
 out = ad.AnnData(
-        X=matching_matrix,
-        uns={
-            "dataset_id": input_test_mod1.uns["dataset_id"],
-            "method_id": "OT",
-        },
-    )
+    X=matching_matrix,
+    uns={
+        "dataset_id": input_test_mod1.uns["dataset_id"],
+        "method_id": "OT",
+    },
+)
 out.write_h5ad(par["output"], compression="gzip")
