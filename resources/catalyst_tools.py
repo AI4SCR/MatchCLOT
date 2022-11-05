@@ -1,7 +1,6 @@
 import torch
 from catalyst import runners, metrics, dl
-
-from models import symmetric_npair_loss
+from resources.models import symmetric_npair_loss
 
 
 class scRNARunner(runners.Runner):
@@ -45,7 +44,6 @@ class scRNARunner(runners.Runner):
         }
 
         # run model backward pass
-        # print('self.is_train_loader', self.is_train_loader)
         if self.is_train_loader:
             self.engine.backward(loss)
             self.optimizer.step()
@@ -68,6 +66,8 @@ class CustomMetric(metrics.ICallbackLoaderMetric):
         self.suffix = suffix or ""
         self.embeddings_list_first = []
         self.embeddings_list_second = []
+        self.batch_size = 256   # For batched computation of metrics
+        self.extended_statistics = False
 
     def reset(self, num_batches: int, num_samples: int) -> None:
         self.embeddings_list_first = []
@@ -87,42 +87,63 @@ class CustomMetric(metrics.ICallbackLoaderMetric):
     def compute_key_value(self):
         all_embeddings_first = torch.cat(self.embeddings_list_first).detach().cpu()
         all_embeddings_second = torch.cat(self.embeddings_list_second).detach().cpu()
-        logits = all_embeddings_first @ all_embeddings_second.T
+        N = all_embeddings_first.shape[0]
+
+        # print("Calculating metrics")
+        embeddings_first = all_embeddings_first
+        embeddings_second = all_embeddings_second
+        logits = embeddings_first @ embeddings_second.T
+        del embeddings_first
+        del embeddings_second
         labels = torch.arange(logits.shape[0])
 
-        del all_embeddings_first
-        del all_embeddings_second
-
-        forward_accuracy = (torch.argmax(logits, dim=1) == labels).float().mean().item()
-        backward_accuracy = (
-            (torch.argmax(logits, dim=0) == labels).float().mean().item()
-        )
-
-        logits_row_sums = logits.clip(min=0).sum(dim=1)
-        top1_competition_metric = logits.clip(min=0).diag().div(logits_row_sums).mean().item()
-        _, top_indexes_forward = logits.topk(5, dim=1)
-        _, top_indexes_backward = logits.topk(5, dim=0)
-        l_forward = labels.expand(5, logits.shape[0]).T
-        l_backward = l_forward.T
-        top5_forward_accuracy = (
-            torch.any(top_indexes_forward == l_forward, 1).float().mean().item()
-        )
-        top5_backward_accuracy = (
-            torch.any(top_indexes_backward == l_backward, 0).float().mean().item()
-        )
-
-        del logits
-
+        forward_accuracy = 0
+        for i in range(0, N, self.batch_size):
+            curr_batch_size = min(self.batch_size, N - i)
+            logits_batch = logits[i : i + curr_batch_size, :]   # row batch
+            forward_accuracy += (torch.argmax(logits_batch, dim=1) + i == labels[i : i + curr_batch_size]).float().mean().item()/curr_batch_size
+            del logits_batch
+        backward_accuracy = 0
+        for i in range(0, N, self.batch_size):
+            curr_batch_size = min(self.batch_size, N - i)
+            logits_batch = logits[:, i : i + curr_batch_size]   # column batch
+            backward_accuracy += (torch.argmax(logits_batch, dim=0) + i == labels[i : i + curr_batch_size]).float().mean().item()/curr_batch_size
+            del logits_batch
         avg_accuracy = 0.5 * (forward_accuracy + backward_accuracy)
-        top5_avg_accuracy = 0.5 * (top5_forward_accuracy + top5_backward_accuracy)
+
+        if self.extended_statistics:
+            top1_competition_metric = 0
+            for i in range(0, N, self.batch_size):
+                curr_batch_size = min(self.batch_size, N - i)
+                logits_batch = logits[i : i + curr_batch_size, :]   # row batch
+                logits_row_sums = logits_batch.clip(min=0).sum(dim=1)
+                top1_competition_metric += logits_batch.clip(min=0).diagonal(offset=i).div(logits_row_sums).mean().item()/curr_batch_size
+
+            _, top_indexes_forward = logits.topk(5, dim=1)
+            _, top_indexes_backward = logits.topk(5, dim=0)
+            l_forward = labels.expand(5, logits.shape[0]).T
+            del logits
+            l_backward = l_forward.T
+            top5_forward_accuracy = (
+                torch.any(top_indexes_forward == l_forward, 1).float().mean().item()
+            )
+            top5_backward_accuracy = (
+                torch.any(top_indexes_backward == l_backward, 0).float().mean().item()
+            )
+            top5_avg_accuracy = 0.5 * (top5_forward_accuracy + top5_backward_accuracy)
 
         loader_metrics = {
             "forward_acc": forward_accuracy,
             "backward_acc": backward_accuracy,
             "avg_acc": avg_accuracy,
-            "top5_forward_acc": top5_forward_accuracy,
-            "top5_backward_acc": top5_backward_accuracy,
-            "top5_avg_accuracy": top5_avg_accuracy,
-            "top1_competition_metric": top1_competition_metric,
         }
+        if self.extended_statistics:
+            loader_metrics.update(
+                {
+                    "top1_competition_metric": top1_competition_metric,
+                    "top5_forward_acc": top5_forward_accuracy,
+                    "top5_backward_acc": top5_backward_accuracy,
+                    "top5_avg_acc": top5_avg_accuracy,
+                }
+            )
         return loader_metrics

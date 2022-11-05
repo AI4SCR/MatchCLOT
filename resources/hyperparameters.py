@@ -1,7 +1,8 @@
 # Default args and hyperparameters
 defaults_common = dict(
-    DATASETS_PATH="../datasets",
-    PRETRAIN_PATH="../pretrain",
+    DATASETS_PATH="datasets",
+    PRETRAIN_PATH="pretrain",
+    VALID_FOLD=0,  # validation on the first batch (s1d1), train on other batches
     HYPERPARAMS=True,
     OT_MATCHING=True,
     BATCH_LABEL_MATCHING=True,
@@ -26,7 +27,6 @@ defaults_GEX2ATAC = dict(
     N_EPOCHS=7000,
     BATCH_SIZE=16384,
     SFA_NOISE=0.0,
-    VALID_FOLD=0,  # validation on the first batch (s1d1), train on other batches
 )
 
 defaults_GEX2ADT = dict(
@@ -47,7 +47,6 @@ defaults_GEX2ADT = dict(
     N_EPOCHS=7000,
     BATCH_SIZE=16384,
     SFA_NOISE=0.0,
-    VALID_FOLD=0,
 )
 
 # Team Novel baseline hyperparameters
@@ -67,7 +66,6 @@ baseline_GEX2ATAC = dict(
     N_EPOCHS=7000,
     BATCH_SIZE=16384,
     SFA_NOISE=0.0,
-    VALID_FOLD=0,
 )
 
 baseline_GEX2ADT = dict(
@@ -88,5 +86,4 @@ baseline_GEX2ADT = dict(
     N_EPOCHS=7000,
     BATCH_SIZE=2048,
     SFA_NOISE=0.0,
-    VALID_FOLD=0,
 )

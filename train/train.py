@@ -9,7 +9,7 @@ import torch
 from catalyst import dl
 from sklearn.model_selection import LeaveOneGroupOut
 
-sys.path.append("../resources")
+sys.path.append(".")
 from resources.data import ModalityMatchingDataset
 from resources.models import Modality_CLIP, Encoder
 from resources.catalyst_tools import scRNARunner, CustomMetric
@@ -17,6 +17,9 @@ from resources.preprocessing import lsiTransformer, harmony
 from resources.hyperparameters import *
 
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+# setting device on GPU if available, else CPU
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+print('Using device:', device)
 
 # Define argument parsers
 parser = argparse.ArgumentParser()
@@ -44,24 +47,22 @@ date = ''.join([c if c.isnumeric() else '' for c in str(pd.Timestamp('today').to
 
 # Define file paths
 if args.TASK == 'GEX2ADT':
-    train_path = args.DATASETS_PATH + "/phase2-data/match_modality/openproblems_bmmc_cite_phase2_rna/openproblems_bmmc_cite_phase2_rna.censor_dataset.output_"
-    test_path = args.DATASETS_PATH + "/phase2-private-data/match_modality/openproblems_bmmc_cite_phase2_rna/openproblems_bmmc_cite_phase2_rna.censor_dataset.output_"
-    pretrain_path = "../pretrain/GEX2ADT/" + date + "/"  # Path for saving the trained model
+    dataset_path = os.path.join(args.DATASETS_PATH, "openproblems_bmmc_cite_phase2_rna/openproblems_bmmc_cite_phase2_rna.censor_dataset.output_")
+    pretrain_path = os.path.join(args.PRETRAIN_PATH, "GEX2ADT")    # Path for saving the trained model
     is_multiome = False
 elif args.TASK == 'GEX2ATAC':
-    train_path = args.DATASETS_PATH + "/phase2-data/match_modality/openproblems_bmmc_multiome_phase2_rna/openproblems_bmmc_multiome_phase2_rna.censor_dataset.output_"
-    test_path = args.DATASETS_PATH + "/phase2-private-data/match_modality/openproblems_bmmc_multiome_phase2_rna/openproblems_bmmc_multiome_phase2_rna.censor_dataset.output_"
-    pretrain_path = "../pretrain/GEX2ATAC/" + date + "/"
+    dataset_path = os.path.join(args.DATASETS_PATH, "openproblems_bmmc_multiome_phase2_rna/openproblems_bmmc_multiome_phase2_rna.censor_dataset.output_")
+    pretrain_path = os.path.join(args.PRETRAIN_PATH, "GEX2ATAC")
     is_multiome = True
 else:
     raise ValueError('Unknown task: ' + args.TASK)
 
 par = {
-    "input_train_mod1": f"{train_path}train_mod1.h5ad",
-    "input_train_mod2": f"{train_path}train_mod2.h5ad",
-    "input_train_sol": f"{train_path}train_sol.h5ad",
-    "input_test_mod1": f"{test_path}test_mod1.h5ad",
-    "input_test_mod2": f"{test_path}test_mod2.h5ad",
+    "input_train_mod1": f"{dataset_path}train_mod1.h5ad",
+    "input_train_mod2": f"{dataset_path}train_mod2.h5ad",
+    "input_train_sol": f"{dataset_path}train_sol.h5ad",
+    "input_test_mod1": f"{dataset_path}test_mod1.h5ad",
+    "input_test_mod2": f"{dataset_path}test_mod2.h5ad",
     "output_pretrain": pretrain_path,
     "input_pretrain": pretrain_path,
 }
@@ -108,6 +109,7 @@ print("GROUPS:", groups)
 logo.get_n_splits(input_train_mod2, groups=groups)
 all_splits = list(logo.split(input_train_mod2, groups=groups))
 train_indexes, test_indexes = all_splits[fold_number]
+print("len train:", len(train_indexes), "len test:", len(test_indexes))
 
 # Load or fit LSI preprocessing
 path = par["output_pretrain"]
@@ -133,13 +135,15 @@ else:
         concatenated_gex = ad.concat([input_train_mod1, input_test_mod1], join="outer")
         print("done, concatenated_gex.shape", concatenated_gex.shape)
         lsi_transformer_gex.fit(concatenated_gex)
+        # Save LSI transformation
+        with open(path + "/lsi_GEX_transformer.pickle", "wb") as f:
+            pickle.dump(lsi_transformer_gex, f)
+        print("saved lsi pickle in ", path + "/lsi_GEX_transformer.pickle")
     else:
         lsi_transformer_gex.fit(input_train_mod1)
-
-    # Save LSI transformation
-    with open(path + "/lsi_GEX_transformer.pickle", "wb") as f:
-        pickle.dump(lsi_transformer_gex, f)
-    print("saved lsi pickle in ", path + "/lsi_GEX_transformer.pickle")
+        with open(path + "/lsi_GEX_transformer.pickle", "wb") as f:
+            pickle.dump(lsi_transformer_gex, f)
+        print("saved lsi pickle in ", trial_dump_folder + "/lsi_GEX_transformer.pickle")
 
     # LSI is applied only on GEX and ATAC, not on ADT
     if is_multiome:
@@ -199,7 +203,7 @@ dataloader_train = torch.utils.data.DataLoader(
     dataset_train, args.BATCH_SIZE, shuffle=True, num_workers=4
 )
 dataloader_test = torch.utils.data.DataLoader(
-    dataset_test, args.BATCH_SIZE, shuffle=False, num_workers=4
+    dataset_test, 256, shuffle=False, num_workers=4
 )
 print("loaded dataloaders")
 
@@ -270,11 +274,15 @@ runner.train(
             minimize=False,
             min_delta=1e-5,
         ),
-        dl.LoaderMetricCallback(
-            metric=CustomMetric(),
-            input_key=["embeddings_first", "embeddings_second", "temperature"],
-            target_key=["embeddings_second"],
-        ),
+        dl.ControlFlowCallbackWrapper(
+            base_callback=dl.LoaderMetricCallback(
+                metric=CustomMetric(),
+                input_key=["embeddings_first", "embeddings_second", "temperature"],
+                target_key=["embeddings_second"],
+            ),
+            ignore_loaders="train"  # Compute metrics only for validation, takes a long time on the training set
+        )
+
     ],
     verbose=True,
 )

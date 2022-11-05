@@ -9,19 +9,17 @@ import pandas as pd
 import scipy.sparse
 import torch
 
+sys.path.append(".")
+from resources.data import ModalityMatchingDataset
+from resources.models import Modality_CLIP, Encoder
+from resources.OTmatching import get_OT_bipartite_matching_adjacency_matrix
+from resources.hyperparameters import *
 from resources.preprocessing import harmony
 
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 # setting device on GPU if available, else CPU
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print('Using device:', device)
-
-sys.path.append("../resources")
-from resources.data import ModalityMatchingDataset
-from resources.models import Modality_CLIP, Encoder
-from resources.OTmatching import get_OT_bipartite_matching_adjacency_matrix
-from resources.hyperparameters import defaults_common, defaults_GEX2ADT, defaults_GEX2ATAC, baseline_GEX2ADT, \
-    baseline_GEX2ATAC
 
 # Define argument parsers
 parser = argparse.ArgumentParser()
@@ -32,7 +30,7 @@ for key, value in defaults_common.items():
     parser.add_argument("--" + key, default=value, type=type(value))
 
 parser.add_argument('--epsilon', '-H', type=float, default=0.01,
-                    description='entropy regularization strength for the OT matching')
+                    help='entropy regularization strength for the OT matching')
 
 # GEX2ADT args
 parser_GEX2ADT = subparsers.add_parser('GEX2ADT', help='train GEX2ADT model')
@@ -49,12 +47,14 @@ args, unknown_args = parser.parse_known_args()
 
 # Define file paths
 if args.TASK == 'GEX2ADT':
-    dataset_path = "../datasets/phase2-private-data/match_modality/openproblems_bmmc_cite_phase2_rna/openproblems_bmmc_cite_phase2_rna.censor_dataset.output_"
-    pretrain_path = args.PRETRAIN_PATH
+    dataset_path = os.path.join(args.DATASETS_PATH,
+                                "openproblems_bmmc_cite_phase2_rna/openproblems_bmmc_cite_phase2_rna.censor_dataset.output_")
+    pretrain_path = os.path.join(args.PRETRAIN_PATH, "GEX2ADT")
     is_multiome = False
 elif args.TASK == 'GEX2ATAC':
-    dataset_path = "../datasets/phase2-private-data/match_modality/openproblems_bmmc_multiome_phase2_rna/openproblems_bmmc_multiome_phase2_rna.censor_dataset.output_"
-    pretrain_path = args.PRETRAIN_PATH
+    dataset_path = os.path.join(args.DATASETS_PATH,
+                                "openproblems_bmmc_multiome_phase2_rna/openproblems_bmmc_multiome_phase2_rna.censor_dataset.output_")
+    pretrain_path = os.path.join(args.PRETRAIN_PATH, "GEX2ATAC")
     is_multiome = True
 else:
     raise ValueError('Unknown task: ' + args.TASK)
@@ -167,7 +167,7 @@ for fold in range(0, 9):
         model.load_state_dict(weight)
 
         # Load torch datasets
-        dataset_test = ModalityMatchingDataset(gex_test, mod2_test)
+        dataset_test = ModalityMatchingDataset(pd.DataFrame(gex_test), pd.DataFrame(mod2_test))
         data_test = torch.utils.data.DataLoader(dataset_test, 32, shuffle=False)
 
         # Predict on test set
@@ -175,11 +175,12 @@ for fold in range(0, 9):
         all_emb_mod2 = []
         indexes = []
         model.eval()
-        for x1, x2 in data_test:
-            x1, x2 = x1.float(), x2.float()
+        for batch in data_test:
+            x1 = batch["features_first"].float()
+            x2 = batch["features_second"].float()
             # The model applies the GEX encoder to the second argument, here x1
             logits, features_mod2, features_mod1 = model(
-                x2.to("cuda"), x1.to("cuda")
+                x2.to(device), x1.to(device)
             )
 
             all_emb_mod1.append(features_mod1.detach().cpu())
