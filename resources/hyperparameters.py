@@ -6,7 +6,7 @@ defaults_common = dict(
     HYPERPARAMS=True,
     OT_MATCHING=True,
     BATCH_LABEL_MATCHING=True,
-    ENTROPIC_OT=True,
+    OT_ENTROPY=0.01,
     TRANSDUCTIVE=True,
     HARMONY=True,
 )

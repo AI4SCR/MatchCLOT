@@ -8,6 +8,7 @@ import pandas as pd
 import torch
 from catalyst import dl
 from sklearn.model_selection import LeaveOneGroupOut
+from distutils.util import strtobool
 
 sys.path.append(".")
 from resources.data import ModalityMatchingDataset
@@ -27,7 +28,7 @@ subparsers = parser.add_subparsers(dest='TASK')
 
 # Common args
 for key, value in defaults_common.items():
-    parser.add_argument("--" + key, default=value, type=type(value))
+    parser.add_argument("--" + key, default=value, type=(lambda x: bool(strtobool(x))) if type(value) == bool else type(value))
 
 # GEX2ADT args
 parser_GEX2ADT = subparsers.add_parser('GEX2ADT', help='train GEX2ADT model')
@@ -72,10 +73,11 @@ os.makedirs(par["output_pretrain"], exist_ok=True)
 if args.HYPERPARAMS == False:
     if is_multiome:
         for hyperparam, baseline_value in baseline_GEX2ATAC.items():
-            args.hyperparam = baseline_value
+            setattr(args, hyperparam, baseline_value)
     else:
         for hyperparam, baseline_value in baseline_GEX2ADT.items():
-            args.hyperparam = baseline_value
+            setattr(args, hyperparam, baseline_value)
+print("args:", args, "unknown_args:", unknown_args)
 
 # Load train data
 print("loading train data")

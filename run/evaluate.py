@@ -1,6 +1,7 @@
 import os
 import anndata as ad
 import torch
+import numpy
 import argparse
 
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
@@ -30,7 +31,10 @@ par = {
 prediction_test = ad.read_h5ad(par["input_test_prediction"])
 sol_test = ad.read_h5ad(par["input_test_sol"])
 
-X = prediction_test.X.toarray()
+if type(prediction_test.X) != numpy.ndarray:
+    X = prediction_test.X.toarray()
+else:
+    X = prediction_test.X
 X = torch.tensor(X)
 
 Xsol = torch.tensor(sol_test.X.toarray())

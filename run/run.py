@@ -8,11 +8,12 @@ import numpy as np
 import pandas as pd
 import scipy.sparse
 import torch
+from distutils.util import strtobool
 
 sys.path.append(".")
 from resources.data import ModalityMatchingDataset
 from resources.models import Modality_CLIP, Encoder
-from resources.OTmatching import get_OT_bipartite_matching_adjacency_matrix
+from resources.postprocessing import OT_matching, MWB_matching
 from resources.hyperparameters import *
 from resources.preprocessing import harmony
 
@@ -27,10 +28,7 @@ subparsers = parser.add_subparsers(dest='TASK')
 
 # Common args
 for key, value in defaults_common.items():
-    parser.add_argument("--" + key, default=value, type=type(value))
-
-parser.add_argument('--epsilon', '-H', type=float, default=0.01,
-                    help='entropy regularization strength for the OT matching')
+    parser.add_argument("--" + key, default=value, type=(lambda x: bool(strtobool(x))) if type(value) == bool else type(value))
 
 # GEX2ADT args
 parser_GEX2ADT = subparsers.add_parser('GEX2ADT', help='train GEX2ADT model')
@@ -65,17 +63,18 @@ par = {
     "input_test_mod1": f"{dataset_path}test_mod1.h5ad",
     "input_test_mod2": f"{dataset_path}test_mod2.h5ad",
     "input_pretrain": pretrain_path,
-    "output": args.TASK + ".h5ad",
+    "output": os.path.join(args.PRETRAIN_PATH, args.TASK + ".h5ad")
 }
 
 # Overwrite configurations for ablation study
 if args.HYPERPARAMS == False:
     if is_multiome:
         for hyperparam, baseline_value in baseline_GEX2ATAC.items():
-            args.hyperparam = baseline_value
+            setattr(args, hyperparam, baseline_value)
     else:
         for hyperparam, baseline_value in baseline_GEX2ADT.items():
-            args.hyperparam = baseline_value
+            setattr(args, hyperparam, baseline_value)
+print("args:", args, "unknown_args:", unknown_args)
 
 # Load data
 input_train_mod1 = ad.read_h5ad(par["input_train_mod1"])
@@ -192,35 +191,50 @@ for fold in range(0, 9):
         # Calculate the cosine similarity matrix and add it to the ensemble
         sim_matrix += (all_emb_mod1 @ all_emb_mod2.T).detach().cpu().numpy()
 
-# Split matching by batch label
-mod1_splits = set(input_test_mod1.obs["batch"])
-mod2_splits = set(input_test_mod2.obs["batch"])
-splits = mod1_splits | mod2_splits
-matching_matrices, mod1_obs_names, mod2_obs_names = [], [], []
-mod1_obs_index = input_test_mod1.obs.index
-mod2_obs_index = input_test_mod2.obs.index
+if args.BATCH_LABEL_MATCHING:
+    # Split matching by batch label
+    mod1_splits = set(input_test_mod1.obs["batch"])
+    mod2_splits = set(input_test_mod2.obs["batch"])
+    splits = mod1_splits | mod2_splits
+    matching_matrices, mod1_obs_names, mod2_obs_names = [], [], []
+    mod1_obs_index = input_test_mod1.obs.index
+    mod2_obs_index = input_test_mod2.obs.index
 
-for split in splits:
-    print("matching split", split)
-    mod1_split = input_test_mod1[input_test_mod1.obs["batch"] == split]
-    mod2_split = input_test_mod2[input_test_mod2.obs["batch"] == split]
-    mod1_obs_names.append(mod1_split.obs_names)
-    mod2_obs_names.append(mod2_split.obs_names)
-    mod1_indexes = mod1_obs_index.get_indexer(mod1_split.obs_names)
-    mod2_indexes = mod2_obs_index.get_indexer(mod2_split.obs_names)
-    sim_matrix_split = sim_matrix[np.ix_(mod1_indexes, mod2_indexes)]
+    for split in splits:
+        print("matching split", split)
+        mod1_split = input_test_mod1[input_test_mod1.obs["batch"] == split]
+        mod2_split = input_test_mod2[input_test_mod2.obs["batch"] == split]
+        mod1_obs_names.append(mod1_split.obs_names)
+        mod2_obs_names.append(mod2_split.obs_names)
+        mod1_indexes = mod1_obs_index.get_indexer(mod1_split.obs_names)
+        mod2_indexes = mod2_obs_index.get_indexer(mod2_split.obs_names)
+        sim_matrix_split = sim_matrix[np.ix_(mod1_indexes, mod2_indexes)]
 
-    # Compute OT matching
-    matching_matrices.append(
-        get_OT_bipartite_matching_adjacency_matrix(sim_matrix_split, epsilon=args.epsilon)
-    )
+        if args.OT_MATCHING:
+            # Compute OT matching
+            matching_matrices.append(
+                OT_matching(sim_matrix_split, entropy_reg=args.OT_ENTROPY)
+            )
+        else:
+            # Max-weight bipartite matching
+            matching_matrices.append(
+                MWB_matching(sim_matrix_split)
+            )
 
-# Assemble the matching matrices and reorder according to the original order of cell profiles
-matching_matrix = scipy.sparse.block_diag(matching_matrices, format="csc")
-mod1_obs_names = pd.Index(np.concatenate(mod1_obs_names))
-mod2_obs_names = pd.Index(np.concatenate(mod2_obs_names))
-matching_matrix = matching_matrix[mod1_obs_names.get_indexer(mod1_obs_index), :][
-                  :, mod2_obs_names.get_indexer(mod2_obs_index)]
+    # Assemble the matching matrices and reorder according to the original order of cell profiles
+    matching_matrix = scipy.sparse.block_diag(matching_matrices, format="csc")
+    mod1_obs_names = pd.Index(np.concatenate(mod1_obs_names))
+    mod2_obs_names = pd.Index(np.concatenate(mod2_obs_names))
+    matching_matrix = matching_matrix[mod1_obs_names.get_indexer(mod1_obs_index), :][
+                      :, mod2_obs_names.get_indexer(mod2_obs_index)]
+else:
+    if args.OT_MATCHING:
+        # Compute OT matching
+        matching_matrix = OT_matching(sim_matrix, entropy_reg=args.OT_ENTROPY)
+    else:
+        # Max-weight bipartite matching
+        matching_matrix = MWB_matching(sim_matrix)
+    matching_matrix = pd.DataFrame(matching_matrix)
 
 # Save the matching matrix
 out = ad.AnnData(
@@ -231,3 +245,4 @@ out = ad.AnnData(
     },
 )
 out.write_h5ad(par["output"], compression="gzip")
+print("Prediction saved to", par["output"])
