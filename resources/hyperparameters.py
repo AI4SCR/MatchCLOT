@@ -2,6 +2,8 @@
 defaults_common = dict(
     DATASETS_PATH="datasets",
     PRETRAIN_PATH="pretrain",
+    OUT_NAME="",
+    SCORES_PATH="scores",
     VALID_FOLD=0,  # validation on the first batch (s1d1), train on other batches
     HYPERPARAMS=True,
     OT_MATCHING=True,

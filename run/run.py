@@ -16,6 +16,7 @@ from resources.models import Modality_CLIP, Encoder
 from resources.postprocessing import OT_matching, MWB_matching
 from resources.hyperparameters import *
 from resources.preprocessing import harmony
+from evaluate import evaluate
 
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 # setting device on GPU if available, else CPU
@@ -28,7 +29,8 @@ subparsers = parser.add_subparsers(dest='TASK')
 
 # Common args
 for key, value in defaults_common.items():
-    parser.add_argument("--" + key, default=value, type=(lambda x: bool(strtobool(x))) if type(value) == bool else type(value))
+    parser.add_argument("--" + key, default=value,
+                        type=(lambda x: bool(strtobool(x))) if type(value) == bool else type(value))
 
 # GEX2ADT args
 parser_GEX2ADT = subparsers.add_parser('GEX2ADT', help='train GEX2ADT model')
@@ -63,7 +65,7 @@ par = {
     "input_test_mod1": f"{dataset_path}test_mod1.h5ad",
     "input_test_mod2": f"{dataset_path}test_mod2.h5ad",
     "input_pretrain": pretrain_path,
-    "output": os.path.join(args.PRETRAIN_PATH, args.TASK + ".h5ad")
+    "output": os.path.join(args.PRETRAIN_PATH, args.OUT_NAME + args.TASK)
 }
 
 # Overwrite configurations for ablation study
@@ -236,7 +238,6 @@ else:
         matching_matrix = MWB_matching(sim_matrix)
     matching_matrix = pd.DataFrame(matching_matrix)
 
-# Save the matching matrix
 out = ad.AnnData(
     X=matching_matrix,
     uns={
@@ -244,5 +245,20 @@ out = ad.AnnData(
         "method_id": "OT",
     },
 )
-out.write_h5ad(par["output"], compression="gzip")
-print("Prediction saved to", par["output"])
+
+# Load the solution for evaluation
+if is_multiome:
+    sol_path = os.path.join(args.DATASETS_PATH, "openproblems_bmmc_multiome_phase2_rna"
+                                                "/openproblems_bmmc_multiome_phase2_rna.censor_dataset.output_")
+else:
+    sol_path = os.path.join(args.DATASETS_PATH, "openproblems_bmmc_cite_phase2_rna/openproblems_bmmc_cite_phase2_rna"
+                                                ".censor_dataset.output_")
+sol = ad.read_h5ad(sol_path + "test_sol.h5ad")
+
+# Score the prediction and save the results
+scores_path = os.path.join("scores", args.OUT_NAME + args.TASK + ".txt")
+evaluate(out, sol, scores_path)
+
+# Save the matching matrix
+out.write_h5ad(par["output"] + ".h5ad", compression="gzip")
+print("Prediction saved to", par["output"] + ".h5ad")

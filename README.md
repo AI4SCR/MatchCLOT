@@ -37,11 +37,9 @@ jbsub -mem 50g -cores 4+1 -q x86_24h python train/train.py --VALID_FOLD=0 GEX2AT
 ```
 ## Evaluation
 - GEX2ADT
-1) `jbsub -mem 50g -cores 4+1 -q x86_1h python run/run.py GEX2ADT`
-2) `jbsub -mem 50g -cores 4 -q x86_1h python run/evaluate.py -p=pretrain/GEX2ADT.h5ad GEX2ADT`
+  `jbsub -mem 50g -cores 4+1 -q x86_1h python run/run.py --OUT="default" GEX2ADT`
 - GEX2ATAC
-1) `jbsub -mem 50g -cores 4+1 -q x86_1h python run/run.py GEX2ATAC`
-2) `jbsub -mem 50g -cores 4 -q x86_1h python run/evaluate.py -p=pretrain/GEX2ATAC.h5ad GEX2ATAC`
+  `jbsub -mem 50g -cores 4+1 -q x86_1h python run/run.py --OUT="default" GEX2ATAC`
 
 ## Ablation study
 ### No improved hyperparameters
@@ -60,8 +58,7 @@ jbsub -mem 50g -cores 4+1 -q x86_24h python train/train.py --VALID_FOLD=0 GEX2AT
       ```
     * Evaluate
       ```
-      jbsub -mem 50g -cores 4+1 -q x86_1h python run/run.py --P=pretrainNoHY --HY=False GEX2ADT
-      jbsub -mem 50g -cores 4 -q x86_1h python run/evaluate.py -p=pretrainNoHY/GEX2ADT.h5ad GEX2ADT
+      jbsub -mem 50g -cores 4+1 -q x86_1h python run/run.py --OUT="NoHY" --P=pretrainNoHY --HY=False GEX2ADT
       ```
     
   - GEX2ATAC
@@ -71,47 +68,40 @@ jbsub -mem 50g -cores 4+1 -q x86_24h python train/train.py --VALID_FOLD=0 GEX2AT
       ```
     * Evaluate
       ```
-      jbsub -mem 50g -cores 4+1 -q x86_1h python run/run.py --P=pretrainNoHY --HY=False GEX2ATAC
-      jbsub -mem 50g -cores 4 -q x86_1h python run/evaluate.py -p=pretrainNoHY/GEX2ATAC.h5ad GEX2ATAC
+      jbsub -mem 50g -cores 4+1 -q x86_1h python run/run.py --OUT="NoHY" --P=pretrainNoHY --HY=False GEX2ATAC
       ```
 
 ### No OT matching 
   Does not require retraining
   - GEX2ADT
     ```
-    jbsub -mem 50g -cores 4+1 -q x86_1h python run/run.py --P=pretrain --OT_M=False GEX2ADT
-    jbsub -mem 50g -cores 4 -q x86_1h python run/evaluate.py -p=pretrain/GEX2ADT.h5ad GEX2ADT
+    jbsub -mem 50g -cores 4+1 -q x86_1h python run/run.py --OUT="NoOT" --P=pretrain --OT_M=False GEX2ADT
     ```
   - GEX2ATAC
     ```
-    jbsub -mem 50g -cores 4+1 -q x86_1h python run/run.py --P=pretrain --OT_M=False GEX2ATAC
-    jbsub -mem 50g -cores 4 -q x86_1h python run/evaluate.py -p=pretrain/GEX2ATAC.h5ad GEX2ATAC
+    jbsub -mem 50g -cores 4+1 -q x86_1h python run/run.py --OUT="NoOT" --P=pretrain --OT_M=False GEX2ATAC
     ```
 
 ### No batch label matching
   Does not require retraining
   - GEX2ADT
     ```
-    jbsub -mem 50g -cores 4+1 -q x86_1h python run/run.py --P=pretrain --B=False GEX2ADT
-    jbsub -mem 50g -cores 4 -q x86_1h python run/evaluate.py -p=pretrain/GEX2ADT.h5ad GEX2ADT
+    jbsub -mem 50g -cores 4+1 -q x86_1h python run/run.py --OUT="NoB" --P=pretrain --B=False GEX2ADT
     ```
   - GEX2ATAC
     ```
-    jbsub -mem 50g -cores 4+1 -q x86_1h python run/run.py --P=pretrain --B=False GEX2ATAC
-    jbsub -mem 50g -cores 4 -q x86_1h python run/evaluate.py -p=pretrain/GEX2ATAC.h5ad GEX2ATAC
+    jbsub -mem 50g -cores 4+1 -q x86_1h python run/run.py --OUT="NoB" --P=pretrain --B=False GEX2ATAC
     ```
 
 ### No entropic regularization for OT matching
   Does not require retraining
   - GEX2ADT
     ```
-    jbsub -mem 50g -cores 4+1 -q x86_1h python run/run.py --P=pretrain --OT_E=0.0 GEX2ADT
-    jbsub -mem 50g -cores 4 -q x86_1h python run/evaluate.py -p=pretrain/GEX2ADT.h5ad GEX2ADT
+    jbsub -mem 50g -cores 4+1 -q x86_1h python run/run.py --OUT="NoE" --P=pretrain --OT_E=0.0 GEX2ADT
     ```
   - GEX2ATAC
     ```
-    jbsub -mem 50g -cores 4+1 -q x86_1h python run/run.py --P=pretrain --OT_E=0.0 GEX2ATAC
-    jbsub -mem 50g -cores 4 -q x86_1h python run/evaluate.py -p=pretrain/GEX2ATAC.h5ad GEX2ATAC
+    jbsub -mem 50g -cores 4+1 -q x86_1h python run/run.py --OUT="NoE" --P=pretrain --OT_E=0.0 GEX2ATAC
     ```
 
 ### No transductive preprocessing
@@ -130,8 +120,7 @@ jbsub -mem 50g -cores 4+1 -q x86_24h python train/train.py --VALID_FOLD=0 GEX2AT
       ```
     * Evaluate
       ```
-      jbsub -mem 50g -cores 4+1 -q x86_1h python run/run.py --P=pretrainNoT --T=False GEX2ADT
-      jbsub -mem 50g -cores 4 -q x86_1h python run/evaluate.py -p=pretrainNoT/GEX2ADT.h5ad GEX2ADT
+      jbsub -mem 50g -cores 4+1 -q x86_1h python run/run.py --OUT="NoT" --P=pretrainNoT --T=False GEX2ADT
       ```
   - GEX2ATAC
     * Train
@@ -148,8 +137,7 @@ jbsub -mem 50g -cores 4+1 -q x86_24h python train/train.py --VALID_FOLD=0 GEX2AT
       ```
     * Evaluate
       ```
-      jbsub -mem 50g -cores 4+1 -q x86_1h python run/run.py --P=pretrainNoT --T=False GEX2ATAC
-      jbsub -mem 50g -cores 4 -q x86_1h python run/evaluate.py -p=pretrainNoT/GEX2ATAC.h5ad GEX2ATAC
+      jbsub -mem 50g -cores 4+1 -q x86_1h python run/run.py --OUT="NoT" --P=pretrainNoT --T=False GEX2ATAC
       ```
 
 ### No Harmony preprocessing
@@ -168,8 +156,7 @@ jbsub -mem 50g -cores 4+1 -q x86_24h python train/train.py --VALID_FOLD=0 GEX2AT
       ```
     * Evaluate
       ```
-      jbsub -mem 50g -cores 4+1 -q x86_1h python run/run.py --P=pretrainNoHA --HA=False GEX2ADT
-      jbsub -mem 50g -cores 4 -q x86_1h python run/evaluate.py -p=pretrainNoHA/GEX2ADT.h5ad GEX2ADT
+      jbsub -mem 50g -cores 4+1 -q x86_1h python run/run.py --OUT="NoHA" --P=pretrainNoHA --HA=False GEX2ADT
       ```
   - GEX2ATAC
     * Train
@@ -186,7 +173,5 @@ jbsub -mem 50g -cores 4+1 -q x86_24h python train/train.py --VALID_FOLD=0 GEX2AT
       ```
     * Evaluate
       ```
-      jbsub -mem 50g -cores 4+1 -q x86_1h python run/run.py --P=pretrainNoHA --HA=False GEX2ATAC
-      jbsub -mem 50g -cores 4 -q x86_1h python run/evaluate.py -p=pretrainNoHA/GEX2ATAC.h5ad GEX2ATAC
+      jbsub -mem 50g -cores 4+1 -q x86_1h python run/run.py --OUT="NoHA" --P=pretrainNoHA --HA=False GEX2ATAC
       ```
-      
