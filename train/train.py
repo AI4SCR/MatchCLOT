@@ -116,14 +116,18 @@ print("len train:", len(train_indexes), "len test:", len(test_indexes))
 # Load or fit LSI preprocessing
 path = par["output_pretrain"]
 
-if os.path.exists(path + "/lsi_GEX_transformer.pickle") and args.TRANSDUCTIVE:
+if os.path.exists(path + "/lsi_GEX_transformer.pickle") and args.TRANSDUCTIVE and not is_multiome:
     # Avoid re-computing LSI transformation when using cross-validation and transductive LSI
     print("loading lsi transformer from", path)
+    # LSI is applied only on GEX and ATAC, not on ADT
     with open(path + "/lsi_GEX_transformer.pickle", "rb") as f:
         lsi_transformer_gex = pickle.load(f)
-    if is_multiome:  # LSI is applied only on GEX and ATAC, not on ADT
-        with open(path + "/lsi_ATAC_transformer.pickle", "rb") as f:
-            lsi_transformer_atac = pickle.load(f)
+elif os.path.exists(path + "/lsi_GEX_transformer.pickle") and\
+     os.path.exists(path + "/lsi_ATAC_transformer.pickle") and args.TRANSDUCTIVE and is_multiome:
+    with open(path + "/lsi_GEX_transformer.pickle", "rb") as f:
+        lsi_transformer_gex = pickle.load(f)
+    with open(path + "/lsi_ATAC_transformer.pickle", "rb") as f:
+        lsi_transformer_atac = pickle.load(f)
 else:
     print("No lsi transformer found in", path, "creating new one")
     os.makedirs(path, exist_ok=True)

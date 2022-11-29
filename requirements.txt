@@ -9,3 +9,4 @@ scipy==1.9.3
 tensorboard==2.10.1
 POT==0.8.2
 networkx==2.8.8
+scanpy==1.9.1

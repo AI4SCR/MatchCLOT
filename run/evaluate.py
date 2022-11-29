@@ -67,6 +67,13 @@ def evaluate(prediction_test, sol_test, scores_path="scores/scores.txt"):
         print("top1 competition metric for soft predictions:", top1_competition_metric)
         print("top1 competition metric for soft predictions:", top1_competition_metric, file=f)
 
+        # FOSCTTM
+        foscttm = (X > torch.diag(X)).float().mean().item()
+        foscttm_x = (X >= torch.diag(X)).float().mean(axis=1).mean().item()
+        foscttm_y = (X >= torch.diag(X)).float().mean(axis=0).mean().item()
+        print("foscttm:", foscttm, "foscttm_x:", foscttm_x, "foscttm_y:", foscttm_y)
+        print("foscttm:", foscttm, "foscttm_x:", foscttm_x, "foscttm_y:", foscttm_y, file=f)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
