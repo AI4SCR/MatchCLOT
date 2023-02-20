@@ -11,6 +11,9 @@ defaults_common = dict(
     OT_ENTROPY=0.01,
     TRANSDUCTIVE=True,
     HARMONY=True,
+    CUSTOM_DATASET_PATH='',
+    SEED=0,
+    SAVE_EMBEDDINGS=False,
 )
 
 defaults_GEX2ATAC = dict(

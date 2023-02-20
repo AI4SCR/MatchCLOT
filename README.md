@@ -38,6 +38,21 @@ python train/train.py --VALID_FOLD=0 GEX2ATAC
 - GEX2ATAC
   `python run/run.py --OUT="default" GEX2ATAC`
 
+## Inference with pretrained models
+1) Download the pretrained models from [here](https://)
+2) Unzip the downloaded files in the [MatchCLOT](MatchCLOT) folder
+3) Run the following command from the [MatchCLOT](MatchCLOT) folder:
+```
+python run/run.py --OUT="pbmc1" --B=False --T=False --HA=False --P=pretrainNoHA --CUSTOM_DATASET_PATH=datasets/PBMC/glue_processed/ GEX2ATAC
+```
+For example, this command will run the pretrained model on the dataset in `datasets/PBMC/glue_processed/`.
+The dataset should be composed of 2 files: `test_mod1.h5ad` and `test_mod2.h5ad`,
+where test_mod1 is the GEX dataset and test_mod2 is the ATAC or ADT dataset.
+The `--B=False` flag disables the batch label matching and is used when the dataset does not have batch labels or is composed of a single batch.
+The `--T=False` flag disables the transductive preprocessing steps and is used when testing on a dataset not available during training.
+The `--HA=False` flag disables the Harmony batch effect correction step and is used when `--B=False`.
+The `--P=pretrainNoHA` flag specifies the pretrained model to use. The `--CUSTOM_DATASET_PATH=datasets/PBMC/glue_processed/` flag specifies the dataset to use. The `GEX2ATAC` flag specifies the task to run.
+
 ## Ablation study
 ### No improved hyperparameters
   - GEX2ADT

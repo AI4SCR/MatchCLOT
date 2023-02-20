@@ -7,6 +7,7 @@ import anndata as ad
 import pandas as pd
 import torch
 from catalyst import dl
+from catalyst.utils import set_global_seed
 from sklearn.model_selection import LeaveOneGroupOut
 from distutils.util import strtobool
 
@@ -42,6 +43,9 @@ for key, value in defaults_GEX2ATAC.items():
 
 # Parse args
 args, unknown_args = parser.parse_known_args()
+
+# Set global random seed
+set_global_seed(args.SEED)
 
 # Date in format YYMMDDHHMMSS
 date = ''.join([c if c.isnumeric() else '' for c in str(pd.Timestamp('today').to_pydatetime())][2:19])
