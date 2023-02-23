@@ -42,8 +42,8 @@ setup(
     name="matchclot",
     version=read_version("matchclot/__init__.py"),  # single place for version
     description="Installable matchclot package.",
-    long_description=open("README.md").read(),
-    long_description_content_type="text/markdown",
+    long_description=open("README.rst").read(),
+    long_description_content_type="text/x-rst",
     url="https://github.com/AI4SCR/MatchCLOT",
     author="Federico Gossi",
     author_email="fgossi@ethz.ch",
@@ -80,6 +80,16 @@ setup(
         # versions should be very loose here, just exclude unsuitable versions
         # because your dependencies also have dependencies and so on ...
         # being too strict here will make dependency resolution harder
-        "click",
+        "anndata>=0.8.0",
+        "numpy>=1.23.4",
+        "pandas>=1.5.1",
+        "torch>=1.13.0",
+        "catalyst>=22.4",
+        "harmony-pytorch>=0.1.7",
+        "scikit-learn>=1.1.3",
+        "scipy>=1.9.3",
+        "POT>=0.8.2",
+        "networkx>=2.8.8",
+        "scanpy>=1.9.1",
     ],
 )
