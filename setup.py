@@ -42,7 +42,7 @@ setup(
     name="matchclot",
     version=read_version("matchclot/__init__.py"),  # single place for version
     description="Installable matchclot package.",
-    long_description=open("README.rst").read(),
+    long_description=open("README.md").read(),
     long_description_content_type="text/x-rst",
     url="https://github.com/AI4SCR/MatchCLOT",
     author="Federico Gossi",
