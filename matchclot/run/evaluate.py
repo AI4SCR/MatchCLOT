@@ -73,8 +73,8 @@ def evaluate(prediction_test, sol_test, scores_path="scores/scores.txt"):
 
         # FOSCTTM
         foscttm = (X > torch.diag(X)).float().mean().item()
-        foscttm_x = (X >= torch.diag(X)).float().mean(axis=1).mean().item()
-        foscttm_y = (X >= torch.diag(X)).float().mean(axis=0).mean().item()
+        foscttm_x = (X > torch.diag(X)).float().mean(axis=1).mean().item()
+        foscttm_y = (X > torch.diag(X)).float().mean(axis=0).mean().item()
         print("foscttm:", foscttm, "foscttm_x:", foscttm_x, "foscttm_y:", foscttm_y)
         print(
             "foscttm:",

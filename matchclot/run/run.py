@@ -1,6 +1,7 @@
 import argparse
 import os
 import pickle
+import sys
 
 import anndata as ad
 import numpy as np
@@ -11,6 +12,7 @@ from distutils.util import strtobool
 
 from catalyst.utils import set_global_seed
 
+import matchclot
 from matchclot.embedding.models import Modality_CLIP, Encoder
 from matchclot.matching.matching import OT_matching, MWB_matching
 from matchclot.preprocessing.preprocess import harmony
@@ -24,8 +26,9 @@ from matchclot.utils.hyperparameters import (
     baseline_GEX2ADT,
 )
 
+
 # sys.path.append(".")
-if __name__ == "__main__":
+def main(argv=sys.argv[1:]):
     os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
     # setting device on GPU if available, else CPU
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -54,7 +57,7 @@ if __name__ == "__main__":
         parser_GEX2ATAC.add_argument("--" + key, default=value, type=type(value))
 
     # Parse args
-    args, unknown_args = parser.parse_known_args()
+    args, unknown_args = parser.parse_known_args(argv)
 
     # Set global random seed
     set_global_seed(args.SEED)
@@ -81,7 +84,6 @@ if __name__ == "__main__":
     if args.CUSTOM_DATASET_PATH != "":
         dataset_path = args.CUSTOM_DATASET_PATH
         assert args.TRANSDUCTIVE is False
-        assert args.HARMONY is False
 
     par = {
         "input_train_mod1": f"{dataset_path}train_mod1.h5ad",
@@ -117,10 +119,16 @@ if __name__ == "__main__":
 
     # Load and apply LSI transformation
     with open(par["input_pretrain"] + "/lsi_GEX_transformer.pickle", "rb") as f:
-        lsi_transformer_gex = pickle.load(f)
+        try:
+            lsi_transformer_gex = pickle.load(f)
+        except ModuleNotFoundError:
+            sys.modules["resources"] = matchclot
     if is_multiome:
         with open(par["input_pretrain"] + "/lsi_ATAC_transformer.pickle", "rb") as f:
-            lsi_transformer_atac = pickle.load(f)
+            try:
+                lsi_transformer_atac = pickle.load(f)
+            except ModuleNotFoundError:
+                sys.modules["resources"] = matchclot
         if args.TRANSDUCTIVE:
             gex_train = lsi_transformer_gex.transform(input_train_mod1)
             mod2_train = lsi_transformer_atac.transform(input_train_mod2)
@@ -256,6 +264,7 @@ if __name__ == "__main__":
         matching_matrices, mod1_obs_names, mod2_obs_names = [], [], []
         mod1_obs_index = input_test_mod1.obs.index
         mod2_obs_index = input_test_mod2.obs.index
+        print("batch label splits", splits)
 
         for split in splits:
             print("matching split", split)
@@ -307,20 +316,30 @@ if __name__ == "__main__":
     print("Prediction saved to", par["output"] + ".h5ad")
 
     # Load the solution for evaluation
-    if is_multiome:
-        sol_path = os.path.join(
-            args.DATASETS_PATH,
-            "openproblems_bmmc_multiome_phase2_rna"
-            "/openproblems_bmmc_multiome_phase2_rna.censor_dataset.output_",
-        )
+    if args.CUSTOM_DATASET_PATH is False:
+        if is_multiome:
+            sol_path = os.path.join(
+                args.DATASETS_PATH,
+                "openproblems_bmmc_multiome_phase2_rna"
+                "/openproblems_bmmc_multiome_phase2_rna.censor_dataset.output_",
+            )
+        else:
+            sol_path = os.path.join(
+                args.DATASETS_PATH,
+                "openproblems_bmmc_cite_phase2_rna/openproblems_bmmc_cite_phase2_rna"
+                ".censor_dataset.output_",
+            )
+
+        sol = ad.read_h5ad(sol_path + "test_sol.h5ad")
     else:
-        sol_path = os.path.join(
-            args.DATASETS_PATH,
-            "openproblems_bmmc_cite_phase2_rna/openproblems_bmmc_cite_phase2_rna"
-            ".censor_dataset.output_",
-        )
-    sol = ad.read_h5ad(sol_path + "test_sol.h5ad")
+        print("For evaluation assuming cell order is the same in the two modalities")
+        # sol.X.toarray() will be called
+        sol = ad.AnnData(X=scipy.sparse.eye(matching_matrix.shape[0]))
 
     # Score the prediction and save the results
     scores_path = os.path.join("scores", args.OUT_NAME + args.TASK + ".txt")
     evaluate(out, sol, scores_path)
+
+
+if __name__ == "__main__":
+    main()
