@@ -19,6 +19,10 @@ pip install matchclot
 ```
 
 .. toctree::
+    :caption: Quickstart
+    source/quickstart
+
+.. toctree::
     :caption: API
     :maxdepth: 5
 
