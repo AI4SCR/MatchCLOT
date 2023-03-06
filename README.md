@@ -1,5 +1,7 @@
 # MatchCLOT
 
+[![Documentation Status](https://readthedocs.org/projects/matchclot/badge/?version=latest)](https://matchclot.readthedocs.io/en/latest/?badge=latest)
+
 Matching single cells across modalities with contrastive learning and
 optimal transport.
 
