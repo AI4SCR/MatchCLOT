@@ -316,7 +316,7 @@ def main(argv=sys.argv[1:]):
     print("Prediction saved to", par["output"] + ".h5ad")
 
     # Load the solution for evaluation
-    if args.CUSTOM_DATASET_PATH is False:
+    if args.CUSTOM_DATASET_PATH == "":
         if is_multiome:
             sol_path = os.path.join(
                 args.DATASETS_PATH,
