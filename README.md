@@ -39,7 +39,7 @@ python train/train.py --VALID_FOLD=0 GEX2ATAC
   `python run/run.py --OUT="default" GEX2ATAC`
 
 ## Inference with pretrained models
-1) Download the pretrained models from [here](https://)
+1) Download the pretrained models from here: [GEX2ADT](https://ibm.box.com/s/bwcdwqpi9x662p7irklq41699h88fr59) [GEX2ATAC](https://ibm.box.com/s/3qhv2usv4n3aif2v3hml5eu5mmko5jbi)
 2) Unzip the downloaded files in the [MatchCLOT](MatchCLOT) folder
 3) Run the following command from the [MatchCLOT](MatchCLOT) folder:
 ```
